@@ -210,6 +210,7 @@ void CleanUp()
     depthStencilView->Release();
     depthStencilBuffer->Release();
     cbPerObjectBuffer->Release();
+    WireFrame->Release();
 }
 
 bool InitScene()
@@ -312,7 +313,13 @@ bool InitScene()
     camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
     camProjection = XMMatrixPerspectiveFovLH(0.4f * 3.14f, (float)Width / Height, 1.0f, 1000.0f);
 
-    SwapChain->Present(0, 0);
+    D3D11_RASTERIZER_DESC wfdesc;
+    ZeroMemory(&wfdesc, sizeof(D3D11_RASTERIZER_DESC));
+    wfdesc.FillMode = D3D11_FILL_WIREFRAME;
+    wfdesc.CullMode = D3D11_CULL_NONE;
+    hr = d3d11Device->CreateRasterizerState(&wfdesc, &WireFrame);
+
+    d3d11DevCon->RSSetState(WireFrame);
 
     return true;
 }
@@ -345,7 +352,7 @@ void DrawScene()
     d3d11DevCon->UpdateSubresource(cbPerObjectBuffer, 0, NULL, &cbPerObj, 0, 0);
     d3d11DevCon->VSSetConstantBuffers(0, 1, &cbPerObjectBuffer);
 
-    d3d11DevCon->DrawIndexed(36, 0, 0);
+    d3d11DevCon->DrawIndexed(index_count, 0, 0);
 
     SwapChain->Present(0, 0);
 }

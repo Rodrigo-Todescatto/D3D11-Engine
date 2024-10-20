@@ -130,3 +130,5 @@ D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
 };
 
 UINT numElements = ARRAYSIZE(inputElementDesc);
+
+ID3D11RasterizerState* WireFrame;
