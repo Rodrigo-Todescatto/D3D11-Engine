@@ -1,12 +1,30 @@
+#define WIN32_LEAN_AND_MEAN
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "user32")             
+#pragma comment( lib, "dxgi.lib")        
 #include <windows.h>
 #include <d3d11.h>
 #include <d3d11sdklayers.h>
 #include <directxmath.h>
 #include <d3dcompiler.h>
+#include <dxgi.h>
+#include<assert.h>
 
 using namespace DirectX;
+
+ID3DBlob* vs_blob_ptr = NULL;
+ID3DBlob* ps_blob_ptr = NULL;
+ID3DBlob* error_blob = NULL;
+
+float vertex_data_array[] = {
+0.0f,  0.5f,  0.0f,
+0.5f, -0.5f,  0.0f,
+-0.5f, -0.5f,  0.0f,
+};
+UINT vertex_stride = 3 * sizeof(float);
+UINT vertex_offset = 0;
+UINT vertex_count = 3;
 
 UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 
@@ -16,21 +34,10 @@ LPCWSTR windowName = L"D3D11 Engine";
 LPCWSTR Exit = L"Are you sure you want to exit? Any unsaved progress will be lost!";
 LPCWSTR Exit2 = L"Exit";
 
-struct Vertex
-{
-    Vertex() {}
-    Vertex(float x, float y, float z)
-        : pos(x, y, z) {}
-
-    XMFLOAT3 pos;
-};
-
-IDXGISwapChain* SwapChain;
-ID3D11Device* d3d11Device;
-ID3D11DeviceContext* d3d11DevCon;
-ID3D11RenderTargetView* renderTargetView;
-
-
+IDXGISwapChain* SwapChain = NULL;
+ID3D11Device* d3d11Device = NULL;
+ID3D11DeviceContext* d3d11DevCon = NULL;
+ID3D11RenderTargetView* renderTargetView = NULL;
 
 ID3D11Buffer* triangleVertBuffer;
 ID3D11VertexShader* VS;
@@ -39,6 +46,8 @@ ID3DBlob* VS_Buffer;
 ID3DBlob* PS_Buffer;
 ID3D11InputLayout* vertLayout;
 ID3DBlob* errorBuffer = NULL;
+
+ID3D11Buffer* vertex_buffer_ptr = NULL;
 
 float red = 0.0f;
 float green = 0.0f;
@@ -49,10 +58,6 @@ int colormodb = 1;
 HRESULT hr;
 
 bool InitializeDirect3dApp(HINSTANCE hInstance);
-void ReleaseObjects();
-bool InitScene();
-void UpdateScene();
-void DrawScene();
 
 const int Width = 1920;
 const int Height = 1080;
@@ -85,15 +90,9 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance,
         MessageBox(0, L"An error has occurred during Direct3D initialization!", L"Error", MB_OK);
         return 0;
     }
-    if (!InitScene()) {
-        MessageBox(0, L"An error has occurred during scene initialization!", L"Error", MB_OK);
-        return 0;
-    }
 
     InitializeDirect3dApp(hInstance);
-    InitScene();
     messageloop();
-    ReleaseObjects();
 
     return 0;
 }
@@ -156,6 +155,11 @@ bool InitializeWindow(HINSTANCE hInstance,
 //Initializes D3D11
 bool InitializeDirect3dApp(HINSTANCE hInstance)
 {
+    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
+#if defined( DEBUG ) || defined( _DEBUG )
+    flags |= D3DCOMPILE_DEBUG; // add more debug output
+#endif
+
     DXGI_MODE_DESC bufferDesc;
 
     ZeroMemory(&bufferDesc, sizeof(DXGI_MODE_DESC));
@@ -212,153 +216,108 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
         return 0;
     }
 
-    d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, nullptr);
+    // COMPILE VERTEX SHADER
+    HRESULT hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
+        flags, 0, &vs_blob_ptr, &error_blob);
+    if (FAILED(hr)) {
+        if (error_blob) {
+            OutputDebugStringA((char*)error_blob->GetBufferPointer());
+            error_blob->Release();
+        }
+        if (vs_blob_ptr) { vs_blob_ptr->Release(); }
+        assert(false);
+    }
+
+    // COMPILE PIXEL SHADER
+    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "ps_main", "ps_5_0",
+        flags, 0, &ps_blob_ptr, &error_blob);
+    if (FAILED(hr)) {
+        if (error_blob) {
+            OutputDebugStringA((char*)error_blob->GetBufferPointer());
+            error_blob->Release();
+        }
+        if (ps_blob_ptr) { ps_blob_ptr->Release(); }
+        assert(false);
+    }
+
+    hr = d3d11Device->CreateVertexShader(
+        vs_blob_ptr->GetBufferPointer(),
+        vs_blob_ptr->GetBufferSize(),
+        NULL,
+        &VS);
+    assert(SUCCEEDED(hr));
+
+    hr = d3d11Device->CreatePixelShader(
+        ps_blob_ptr->GetBufferPointer(),
+        ps_blob_ptr->GetBufferSize(),
+        NULL,
+        &PS);
+    assert(SUCCEEDED(hr));
+
+    ID3D11InputLayout* input_layout_ptr = NULL;
+    D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
+      { "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+      /*
+      { "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+      { "NOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+      { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+      */
+    };
+    hr = d3d11Device->CreateInputLayout(inputElementDesc, ARRAYSIZE(inputElementDesc), vs_blob_ptr->GetBufferPointer(),
+        vs_blob_ptr->GetBufferSize(), &input_layout_ptr);
+    assert(SUCCEEDED(hr));
+
+    { /*** load mesh data into vertex buffer **/
+        D3D11_BUFFER_DESC vertex_buff_descr = {};
+        vertex_buff_descr.ByteWidth = sizeof(vertex_data_array);
+        vertex_buff_descr.Usage = D3D11_USAGE_DEFAULT;
+        vertex_buff_descr.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+        D3D11_SUBRESOURCE_DATA sr_data = { 0 };
+        sr_data.pSysMem = vertex_data_array;
+        HRESULT hr = d3d11Device->CreateBuffer(&vertex_buff_descr, &sr_data, &vertex_buffer_ptr);
+        assert(SUCCEEDED(hr));
+    }
 
     return true;
-}
-
-//Prevents a memory leak
-void ReleaseObjects()
-{
-    SwapChain->Release();
-    d3d11Device->Release();
-    d3d11DevCon->Release();
-    renderTargetView->Release();
-    triangleVertBuffer->Release();
-    VS->Release();
-    PS->Release();
-    VS_Buffer->Release();
-    PS_Buffer->Release();
-    vertLayout->Release();
-}
-
-//Initialize the scene
-bool InitScene()
-{
-    DWORD createDeviceFlags = 0;
-#ifdef _DEBUG
-    createDeviceFlags |= D3D11_CREATE_DEVICE_DEBUG;
-#endif
-
-    D3D11_INPUT_ELEMENT_DESC layout[] =
-    {
-        {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
-    };
-    UINT numElements = ARRAYSIZE(layout);
-
-    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, nullptr, "main", "vs_5_0", flags, 0, &VS_Buffer, &errorBuffer);
-
-    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, nullptr, "main", "ps_5_0", flags, 0, &PS_Buffer, &errorBuffer);
-
-    hr = d3d11Device->CreateVertexShader(VS_Buffer->GetBufferPointer(), VS_Buffer->GetBufferSize(), NULL, &VS);
-    if (FAILED(hr)) {
-        if (errorBuffer) {
-            MessageBox(NULL, (LPCWSTR)errorBuffer->GetBufferPointer(), TEXT("Shader Compilation Error"), MB_OK);
-            errorBuffer->Release();
-        }
-        return false;
-    }
-
-    hr = d3d11Device->CreatePixelShader(PS_Buffer->GetBufferPointer(), PS_Buffer->GetBufferSize(), NULL, &PS);
-    if (FAILED(hr)) {
-        if (errorBuffer) {
-            MessageBox(NULL, (LPCWSTR)errorBuffer->GetBufferPointer(), TEXT("Pixel Compilation Error"), MB_OK);
-            errorBuffer->Release();
-        }
-        return false;
-    }
-
-    d3d11DevCon->VSSetShader(VS, 0, 0);
-    d3d11DevCon->PSSetShader(PS, 0, 0);
-
-    Vertex v[] = {
-    Vertex(0.0f, 0.5f, 0.5f),
-    Vertex(0.5f, -0.5f, 0.5f),
-    Vertex(-0.5f, -0.5f, 0.5f)
-    };
-
-    D3D11_BUFFER_DESC vertexBufferDesc;
-    ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
-    vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-    vertexBufferDesc.ByteWidth = sizeof(Vertex) * 3;
-    vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-    vertexBufferDesc.CPUAccessFlags = 0;
-    vertexBufferDesc.MiscFlags = 0;
-
-    D3D11_SUBRESOURCE_DATA vertexBufferData;
-    ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
-    vertexBufferData.pSysMem = v;
-
-    hr = d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &triangleVertBuffer);
-    if (FAILED(hr)) {
-        MessageBox(NULL, L"An error has occured! Error code: 7", TEXT("Error"), MB_OK);
-        return false;
-    }
-
-    UINT stride = sizeof(Vertex);
-    UINT offset = 0;
-    d3d11DevCon->IASetVertexBuffers(0, 1, &triangleVertBuffer, &stride, &offset);
-
-    hr = d3d11Device->CreateInputLayout(layout, numElements, VS_Buffer->GetBufferPointer(),
-        VS_Buffer->GetBufferSize(), &vertLayout);
-    if (FAILED(hr)) {
-        MessageBox(NULL, L"An error has ocurred during creating the input layout!", TEXT("Error"), MB_OK);
-        return false;
-    }
-
-    d3d11DevCon->IASetInputLayout(vertLayout);
-
-    d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-
-    D3D11_VIEWPORT viewport;
-    viewport.TopLeftX = 0;
-    viewport.TopLeftY = 0;
-    viewport.Width = static_cast<float>(Width);
-    viewport.Height = static_cast<float>(Height);
-    viewport.MinDepth = 0.0f;
-    viewport.MaxDepth = 1.0f;
-    d3d11DevCon->RSSetViewports(1, &viewport);
-
-    return true;
-}
-
-//Updates scene
-void UpdateScene()
-{
-    red += colormodr * 0.00005f;
-    green += colormodg * 0.00002f;
-    blue += colormodb * 0.00001f;
-
-    if (red >= 1.0f || red <= 0.0f)
-        colormodr *= -1;
-    if (green >= 1.0f || green <= 0.0f)
-        colormodg *= -1;
-    if (blue >= 1.0f || blue <= 0.0f)
-        colormodb *= -1;
-}
-
-//Draws scene
-void DrawScene()
-{
-    float bgColor[4] = { red, green, blue, 1.0f };
-
-    d3d11DevCon->ClearRenderTargetView(renderTargetView, bgColor);
-
-    d3d11DevCon->Draw(3, 0);
-
-    SwapChain->Present(0, 0);
 }
 
 int messageloop() {
     MSG msg = { 0 };
-    while (msg.message != WM_QUIT) {
-        if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
+    bool should_close = false;
+    while (!should_close) {
+        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
-        else {
-            UpdateScene();  
-            DrawScene();    
+        if (msg.message == WM_QUIT) { break; }
+        {
+            float background_colour[4] = { 0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
+            d3d11DevCon->ClearRenderTargetView(renderTargetView, background_colour);
+
+            RECT winRect;
+            GetClientRect(hwnd, &winRect);
+            D3D11_VIEWPORT viewport = {
+              0.0f,
+              0.0f,
+              (FLOAT)(winRect.right - winRect.left),
+              (FLOAT)(winRect.bottom - winRect.top),
+              0.0f,
+              1.0f };
+            d3d11DevCon->RSSetViewports(1, &viewport);
+
+            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, NULL);
+
+            d3d11DevCon->IASetInputLayout(vertLayout);
+            d3d11DevCon->IASetVertexBuffers(0, 1, &vertex_buffer_ptr, &vertex_stride, &vertex_offset);
+
+            d3d11DevCon->VSSetShader(VS, NULL, 0);
+            d3d11DevCon->PSSetShader(PS, NULL, 0);
+
+            d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            d3d11DevCon->Draw(vertex_count, 0);
+
+            SwapChain->Present(1, 0);
+
         }
     }
     return msg.wParam;

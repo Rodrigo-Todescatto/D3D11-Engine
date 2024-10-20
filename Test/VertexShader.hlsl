@@ -1,23 +1,23 @@
-// Vertex Shader
-struct VS_INPUT
+/* vertex attributes go here to input to the vertex shader */
+struct vs_in
 {
-    float4 Pos : POSITION;
+    float3 position_local : POS;
 };
 
-struct VS_OUTPUT
+/* outputs from vertex shader go here. can be interpolated to pixel shader */
+struct vs_out
 {
-    float4 Pos : SV_POSITION;
+    float4 position_clip : SV_POSITION; // required output of VS
 };
 
-VS_OUTPUT main(VS_INPUT input)
+vs_out vs_main(vs_in input)
 {
-    VS_OUTPUT output;
-    output.Pos = input.Pos;
+    vs_out output = (vs_out) 0; // zero the memory first
+    output.position_clip = float4(input.position_local, 1.0);
     return output;
 }
 
-// Pixel Shader
-float4 main(VS_OUTPUT input) : SV_TARGET
+float4 ps_main(vs_out input) : SV_TARGET
 {
-    return float4(1.0f, 0.0f, 0.0f, 1.0f); // Cor vermelha
+    return float4(1.0, 0.0, 1.0, 1.0); // must return an RGBA colour
 }
