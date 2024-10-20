@@ -11,6 +11,11 @@
 #include <dxgi.h>
 #include "Variables.h"
 
+bool InitializeDirect3dApp(HINSTANCE hInstance);
+void CleanUp();
+bool InitScene();
+void UpdateScene();
+void DrawScene();
 
 bool InitializeDirect3dApp(HINSTANCE hInstance);
 
@@ -48,6 +53,7 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance,
 
     InitializeDirect3dApp(hInstance);
     messageloop();
+    CleanUp();
 
     return 0;
 }
@@ -149,7 +155,7 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
     }
 
     ID3D11Texture2D* BackBuffer;
-    SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&BackBuffer);
+    hr = SwapChain->GetBuffer(0, __uuidof(ID3D11Texture2D), (void**)&BackBuffer);
     if (FAILED(hr))
     {
         MessageBox(NULL, L"An error has ocurred during getting buffer!",
@@ -183,8 +189,32 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
     d3d11Device->CreateTexture2D(&depthStencilDesc, NULL, &depthStencilBuffer);
     d3d11Device->CreateDepthStencilView(depthStencilBuffer, NULL, &depthStencilView);
 
-    // COMPILE VERTEX SHADER
-    HRESULT hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
+    d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
+
+    return true;
+}
+
+void CleanUp()
+{
+    SwapChain->Release();
+    d3d11Device->Release();
+    d3d11DevCon->Release();
+    renderTargetView->Release();
+    squareVertBuffer->Release();
+    squareIndexBuffer->Release();
+    VS->Release();
+    PS->Release();
+    VS_Buffer->Release();
+    PS_Buffer->Release();
+    vertLayout->Release();
+    depthStencilView->Release();
+    depthStencilBuffer->Release();
+    cbPerObjectBuffer->Release();
+}
+
+bool InitScene()
+{
+    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
         flags, 0, &vs_blob_ptr, &error_blob);
     if (FAILED(hr)) {
         if (error_blob) {
@@ -194,7 +224,6 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
         if (vs_blob_ptr) { vs_blob_ptr->Release(); }
     }
 
-    // COMPILE PIXEL SHADER
     hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "ps_main", "ps_5_0",
         flags, 0, &ps_blob_ptr, &error_blob);
     if (FAILED(hr)) {
@@ -217,15 +246,8 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
         NULL,
         &PS);
 
-    D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
-      { "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      { "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      { "NOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-
-    };
-    hr = d3d11Device->CreateInputLayout(inputElementDesc, ARRAYSIZE(inputElementDesc), vs_blob_ptr->GetBufferPointer(),
-        vs_blob_ptr->GetBufferSize(), &input_layout_ptr);
+    d3d11DevCon->VSSetShader(VS, NULL, 0);
+    d3d11DevCon->PSSetShader(PS, NULL, 0);
 
     D3D11_BUFFER_DESC indexBufferDesc;
     ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
@@ -240,30 +262,92 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
 
     iinitData.pSysMem = indices;
     d3d11Device->CreateBuffer(&indexBufferDesc, &iinitData, &squareIndexBuffer);
-
     d3d11DevCon->IASetIndexBuffer(squareIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
-    { /*** load mesh data into vertex buffer **/
-        D3D11_BUFFER_DESC vertex_buff_descr = {};
-        vertex_buff_descr.ByteWidth = sizeof(indices) * 8;
-        vertex_buff_descr.Usage = D3D11_USAGE_DEFAULT;
-        vertex_buff_descr.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-        D3D11_SUBRESOURCE_DATA sr_data = { 0 };
-        sr_data.pSysMem = v;
-        D3D11_SUBRESOURCE_DATA vertexBufferData;
-        ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
-        vertexBufferData.pSysMem = indices;
-        hr = d3d11Device->CreateBuffer(&vertex_buff_descr, &vertexBufferData, &squareVertBuffer);
-    }
+    D3D11_BUFFER_DESC vertexBufferDesc;
+    ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
+    vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    vertexBufferDesc.ByteWidth = sizeof(Vertex) * 8;
+    vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vertexBufferDesc.CPUAccessFlags = 0;
+    vertexBufferDesc.MiscFlags = 0;
+    D3D11_SUBRESOURCE_DATA vertexBufferData;
+    ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+    vertexBufferData.pSysMem = v;
+    hr = d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &squareVertBuffer);
+    d3d11DevCon->IASetVertexBuffers(0, 1, &squareVertBuffer, &vertex_stride, &vertex_offset);
 
-    SwapChain->Present(1, 0);
+    hr = d3d11Device->CreateInputLayout(inputElementDesc, numElements, vs_blob_ptr->GetBufferPointer(),
+        vs_blob_ptr->GetBufferSize(), &input_layout_ptr);
+    d3d11DevCon->IASetInputLayout(vertLayout);
+
+    d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+    D3D11_VIEWPORT viewport;
+    ZeroMemory(&viewport, sizeof(D3D11_VIEWPORT));
+
+    viewport.TopLeftX = 0;
+    viewport.TopLeftY = 0;
+    viewport.Width = Width;
+    viewport.Height = Height;
+    viewport.MinDepth = 0.0f;
+    viewport.MaxDepth = 1.0f;
+
+    d3d11DevCon->RSSetViewports(1, &viewport);
+
+    D3D11_BUFFER_DESC cbbd;
+    ZeroMemory(&cbbd, sizeof(D3D11_BUFFER_DESC));
+
+    cbbd.Usage = D3D11_USAGE_DEFAULT;
+    cbbd.ByteWidth = sizeof(cbPerObject);
+    cbbd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    cbbd.CPUAccessFlags = 0;
+    cbbd.MiscFlags = 0;
+
+    hr = d3d11Device->CreateBuffer(&cbbd, NULL, &cbPerObjectBuffer);
+
+    camPosition = XMVectorSet(0.0f, 3.0f, -8.0f, 0.0f);
+    camTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    camUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
+    camProjection = XMMatrixPerspectiveFovLH(0.4f * 3.14f, (float)Width / Height, 1.0f, 1000.0f);
+
+    SwapChain->Present(0, 0);
 
     return true;
 }
 
 void UpdateScene()
 {
+    rot += .0005f;
+    if (rot > 6.28f)
+        rot = 0.0f;
 
+    cube = XMMatrixIdentity();
+
+    XMVECTOR rotaxis = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    Rotation = XMMatrixRotationAxis(rotaxis, rot);
+    Translation = XMMatrixTranslation(0.0f, 0.0f, 4.0f);
+
+    cube = Translation * Rotation;
+}
+
+void DrawScene()
+{
+    float background_colour[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+
+    d3d11DevCon->ClearRenderTargetView(renderTargetView, background_colour);
+
+    d3d11DevCon->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+    WVP = cube * camView * camProjection;
+    cbPerObj.WVP = XMMatrixTranspose(WVP);
+    d3d11DevCon->UpdateSubresource(cbPerObjectBuffer, 0, NULL, &cbPerObj, 0, 0);
+    d3d11DevCon->VSSetConstantBuffers(0, 1, &cbPerObjectBuffer);
+
+    d3d11DevCon->DrawIndexed(36, 0, 0);
+
+    SwapChain->Present(0, 0);
 }
 
 int messageloop() {
@@ -276,59 +360,9 @@ int messageloop() {
         }
         if (msg.message == WM_QUIT) { break; }
         {
+            InitScene();
             UpdateScene();
-
-            float background_colour[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
-            d3d11DevCon->ClearRenderTargetView(renderTargetView, background_colour);
-
-            d3d11DevCon->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
-
-            RECT winRect;
-            GetClientRect(hwnd, &winRect);
-            D3D11_VIEWPORT viewport = {
-              0.0f,
-              0.0f,
-              (FLOAT)(winRect.right - winRect.left),
-              (FLOAT)(winRect.bottom - winRect.top),
-              0.0f,
-              1.0f };
-            viewport.MinDepth = 0.0f;
-            viewport.MaxDepth = 1.0f;
-
-            d3d11DevCon->RSSetViewports(1, &viewport);
-
-            camPosition = XMVectorSet(0.0f, 0.0f, -0.5f, 0.0f);
-            camTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
-            camUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-            camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
-            camProjection = XMMatrixPerspectiveFovLH(0.4f * 3.14f, (float)Width / Height, 1.0f, 1000.0f);
-
-            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
-
-            d3d11DevCon->IASetInputLayout(vertLayout);
-            vertLayout = input_layout_ptr;
-            d3d11DevCon->IASetVertexBuffers(0, 1, &vertex_buffer_ptr, &vertex_stride, &vertex_offset);
-
-            d3d11DevCon->VSSetShader(VS, NULL, 0);
-            d3d11DevCon->PSSetShader(PS, NULL, 0);
-
-            d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            d3d11DevCon->DrawIndexed(vertex_count, 0, 0);
-
-            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
-
-            d3d11DevCon->IASetInputLayout(vertLayout);
-            vertLayout = input_layout_ptr;
-            d3d11DevCon->IASetVertexBuffers(0, 1, &vertex_buffer_ptr, &vertex_stride, &vertex_offset);
-
-            d3d11DevCon->VSSetShader(VS, NULL, 0);
-            d3d11DevCon->PSSetShader(PS, NULL, 0);
-
-            d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            d3d11DevCon->DrawIndexed(vertex_count, 0, 0);
-
-            SwapChain->Present(0, 0);
-
+            DrawScene();
         }
     }
     return msg.wParam;

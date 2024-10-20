@@ -1,23 +1,25 @@
-/* vertex attributes go here to input to the vertex shader */
-struct vs_in
+struct VS_OUTPUT
 {
-    float3 position_local : POS;
+    float4 Pos : SV_POSITION;
+    float4 Color : COLOR;
 };
 
-/* outputs from vertex shader go here. can be interpolated to pixel shader */
-struct vs_out
+cbuffer cbPerObject
 {
-    float4 position_clip : SV_POSITION; // required output of VS
+    float4x4 WVP;
 };
 
-vs_out vs_main(vs_in input)
+VS_OUTPUT vs_main(float4 inPos : POSITION, float4 inColor : COLOR)
 {
-    vs_out output = (vs_out) 0; // zero the memory first
-    output.position_clip = float4(input.position_local, 1.0);
+    VS_OUTPUT output;
+    output.Pos = mul(inPos, WVP);
+    output.Color = inColor;
+    
     return output;
 }
 
-float4 ps_main(vs_out input) : SV_TARGET
+// Pixel Shader
+float4 ps_main(VS_OUTPUT input) : SV_TARGET
 {
-    return float4(1.0, 0.0, 1.0, 1.0); // must return an RGBA colour
+    return input.Color; 
 }

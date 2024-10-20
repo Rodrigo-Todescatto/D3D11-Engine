@@ -32,12 +32,12 @@ struct Vertex    //Overloaded Vertex Structure
 Vertex v[] =
 {
     Vertex(-1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(-1.0f, +1.0f, -1.0f, 0.0f, 1.0f, 0.0f, 1.0f),
-    Vertex(+1.0f, +1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-    Vertex(+1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
-    Vertex(-1.0f, -1.0f, +1.0f, 0.0f, 1.0f, 1.0f, 1.0f),
-    Vertex(-1.0f, +1.0f, +1.0f, 1.0f, 1.0f, 1.0f, 1.0f),
-    Vertex(+1.0f, +1.0f, +1.0f, 1.0f, 0.0f, 1.0f, 1.0f),
+    Vertex(-1.0f, +1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, +1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, -1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, +1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, +1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
     Vertex(+1.0f, -1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
 };
 
@@ -67,9 +67,9 @@ DWORD indices[] = {
     4, 3, 7
 };
 
-UINT vertex_stride = sizeof(indices);
+UINT vertex_stride = sizeof(Vertex);
 UINT vertex_offset = 0;
-UINT vertex_count = 36;
+UINT index_count = ARRAYSIZE(indices);
 
 UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
 
@@ -116,11 +116,17 @@ struct cbPerObject
 
 cbPerObject cbPerObj;
 
-XMMATRIX cube1World;
-XMMATRIX cube2World;
+XMMATRIX cube;
 XMMATRIX Rotation;
 XMMATRIX Scale;
 XMMATRIX Translation;
 float rot = 0.01f;
 
 HRESULT hr;
+
+D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
+      { "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+      { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+};
+
+UINT numElements = ARRAYSIZE(inputElementDesc);
