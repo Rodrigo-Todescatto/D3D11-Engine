@@ -9,53 +9,8 @@
 #include <directxmath.h>
 #include <d3dcompiler.h>
 #include <dxgi.h>
-#include<assert.h>
+#include "Variables.h"
 
-using namespace DirectX;
-
-ID3DBlob* vs_blob_ptr = NULL;
-ID3DBlob* ps_blob_ptr = NULL;
-ID3DBlob* error_blob = NULL;
-
-float vertex_data_array[] = {
-0.0f,  0.5f,  0.0f,
-0.5f, -0.5f,  0.0f,
--0.5f, -0.5f,  0.0f,
-};
-UINT vertex_stride = 3 * sizeof(float);
-UINT vertex_offset = 0;
-UINT vertex_count = 3;
-
-UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-
-LPCTSTR WndClassName = L"D3D11 Engine";
-HWND hwnd = NULL;
-LPCWSTR windowName = L"D3D11 Engine";
-LPCWSTR Exit = L"Are you sure you want to exit? Any unsaved progress will be lost!";
-LPCWSTR Exit2 = L"Exit";
-
-IDXGISwapChain* SwapChain = NULL;
-ID3D11Device* d3d11Device = NULL;
-ID3D11DeviceContext* d3d11DevCon = NULL;
-ID3D11RenderTargetView* renderTargetView = NULL;
-
-ID3D11Buffer* triangleVertBuffer;
-ID3D11VertexShader* VS;
-ID3D11PixelShader* PS;
-ID3DBlob* VS_Buffer;
-ID3DBlob* PS_Buffer;
-ID3D11InputLayout* vertLayout;
-ID3DBlob* errorBuffer = NULL;
-
-ID3D11Buffer* vertex_buffer_ptr = NULL;
-
-float red = 0.0f;
-float green = 0.0f;
-float blue = 0.0f;
-int colormodr = 1;
-int colormodg = 1;
-int colormodb = 1;
-HRESULT hr;
 
 bool InitializeDirect3dApp(HINSTANCE hInstance);
 
@@ -120,7 +75,7 @@ bool InitializeWindow(HINSTANCE hInstance,
     if (!RegisterClassEx(&wc))
     {
         MessageBox(NULL, L"An error has ocurred during class registration!",
-        L"Error", MB_OK | MB_ICONERROR);
+            L"Error", MB_OK | MB_ICONERROR);
         return false;
     }
 
@@ -142,7 +97,7 @@ bool InitializeWindow(HINSTANCE hInstance,
     {
 
         MessageBox(NULL, L"An error has ocurred during window creation!",
-        L"Error", MB_OK | MB_ICONERROR);
+            L"Error", MB_OK | MB_ICONERROR);
         return false;
     }
 
@@ -155,11 +110,6 @@ bool InitializeWindow(HINSTANCE hInstance,
 //Initializes D3D11
 bool InitializeDirect3dApp(HINSTANCE hInstance)
 {
-    UINT flags = D3DCOMPILE_ENABLE_STRICTNESS;
-#if defined( DEBUG ) || defined( _DEBUG )
-    flags |= D3DCOMPILE_DEBUG; // add more debug output
-#endif
-
     DXGI_MODE_DESC bufferDesc;
 
     ZeroMemory(&bufferDesc, sizeof(DXGI_MODE_DESC));
@@ -176,7 +126,7 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
 
     ZeroMemory(&swapChainDesc, sizeof(DXGI_SWAP_CHAIN_DESC));
 
-    swapChainDesc.BufferCount = 3; 
+    swapChainDesc.BufferCount = 3;
     swapChainDesc.BufferDesc.Width = Width;
     swapChainDesc.BufferDesc.Height = Height;
     swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -216,6 +166,23 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
         return 0;
     }
 
+    D3D11_TEXTURE2D_DESC depthStencilDesc;
+
+    depthStencilDesc.Width = Width;
+    depthStencilDesc.Height = Height;
+    depthStencilDesc.MipLevels = 1;
+    depthStencilDesc.ArraySize = 1;
+    depthStencilDesc.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+    depthStencilDesc.SampleDesc.Count = 1;
+    depthStencilDesc.SampleDesc.Quality = 0;
+    depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
+    depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+    depthStencilDesc.CPUAccessFlags = 0;
+    depthStencilDesc.MiscFlags = 0;
+
+    d3d11Device->CreateTexture2D(&depthStencilDesc, NULL, &depthStencilBuffer);
+    d3d11Device->CreateDepthStencilView(depthStencilBuffer, NULL, &depthStencilView);
+
     // COMPILE VERTEX SHADER
     HRESULT hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
         flags, 0, &vs_blob_ptr, &error_blob);
@@ -225,7 +192,6 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
             error_blob->Release();
         }
         if (vs_blob_ptr) { vs_blob_ptr->Release(); }
-        assert(false);
     }
 
     // COMPILE PIXEL SHADER
@@ -237,7 +203,6 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
             error_blob->Release();
         }
         if (ps_blob_ptr) { ps_blob_ptr->Release(); }
-        assert(false);
     }
 
     hr = d3d11Device->CreateVertexShader(
@@ -245,40 +210,60 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
         vs_blob_ptr->GetBufferSize(),
         NULL,
         &VS);
-    assert(SUCCEEDED(hr));
 
     hr = d3d11Device->CreatePixelShader(
         ps_blob_ptr->GetBufferPointer(),
         ps_blob_ptr->GetBufferSize(),
         NULL,
         &PS);
-    assert(SUCCEEDED(hr));
 
-    ID3D11InputLayout* input_layout_ptr = NULL;
     D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
       { "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      /*
       { "COL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
       { "NOR", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
       { "TEX", 0, DXGI_FORMAT_R32G32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-      */
+
     };
     hr = d3d11Device->CreateInputLayout(inputElementDesc, ARRAYSIZE(inputElementDesc), vs_blob_ptr->GetBufferPointer(),
         vs_blob_ptr->GetBufferSize(), &input_layout_ptr);
-    assert(SUCCEEDED(hr));
+
+    D3D11_BUFFER_DESC indexBufferDesc;
+    ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
+
+    indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    indexBufferDesc.ByteWidth = sizeof(DWORD) * 12 * 3;
+    indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    indexBufferDesc.CPUAccessFlags = 0;
+    indexBufferDesc.MiscFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA iinitData;
+
+    iinitData.pSysMem = indices;
+    d3d11Device->CreateBuffer(&indexBufferDesc, &iinitData, &squareIndexBuffer);
+
+    d3d11DevCon->IASetIndexBuffer(squareIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 
     { /*** load mesh data into vertex buffer **/
         D3D11_BUFFER_DESC vertex_buff_descr = {};
-        vertex_buff_descr.ByteWidth = sizeof(vertex_data_array);
+        vertex_buff_descr.ByteWidth = sizeof(indices) * 8;
         vertex_buff_descr.Usage = D3D11_USAGE_DEFAULT;
         vertex_buff_descr.BindFlags = D3D11_BIND_VERTEX_BUFFER;
         D3D11_SUBRESOURCE_DATA sr_data = { 0 };
-        sr_data.pSysMem = vertex_data_array;
-        HRESULT hr = d3d11Device->CreateBuffer(&vertex_buff_descr, &sr_data, &vertex_buffer_ptr);
-        assert(SUCCEEDED(hr));
+        sr_data.pSysMem = v;
+        D3D11_SUBRESOURCE_DATA vertexBufferData;
+        ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+        vertexBufferData.pSysMem = indices;
+        hr = d3d11Device->CreateBuffer(&vertex_buff_descr, &vertexBufferData, &squareVertBuffer);
     }
 
+    SwapChain->Present(1, 0);
+
     return true;
+}
+
+void UpdateScene()
+{
+
 }
 
 int messageloop() {
@@ -291,8 +276,12 @@ int messageloop() {
         }
         if (msg.message == WM_QUIT) { break; }
         {
-            float background_colour[4] = { 0x64 / 255.0f, 0x95 / 255.0f, 0xED / 255.0f, 1.0f };
+            UpdateScene();
+
+            float background_colour[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
             d3d11DevCon->ClearRenderTargetView(renderTargetView, background_colour);
+
+            d3d11DevCon->ClearDepthStencilView(depthStencilView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
 
             RECT winRect;
             GetClientRect(hwnd, &winRect);
@@ -303,20 +292,42 @@ int messageloop() {
               (FLOAT)(winRect.bottom - winRect.top),
               0.0f,
               1.0f };
+            viewport.MinDepth = 0.0f;
+            viewport.MaxDepth = 1.0f;
+
             d3d11DevCon->RSSetViewports(1, &viewport);
 
-            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, NULL);
+            camPosition = XMVectorSet(0.0f, 0.0f, -0.5f, 0.0f);
+            camTarget = XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+            camUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+            camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
+            camProjection = XMMatrixPerspectiveFovLH(0.4f * 3.14f, (float)Width / Height, 1.0f, 1000.0f);
+
+            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
 
             d3d11DevCon->IASetInputLayout(vertLayout);
+            vertLayout = input_layout_ptr;
             d3d11DevCon->IASetVertexBuffers(0, 1, &vertex_buffer_ptr, &vertex_stride, &vertex_offset);
 
             d3d11DevCon->VSSetShader(VS, NULL, 0);
             d3d11DevCon->PSSetShader(PS, NULL, 0);
 
             d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-            d3d11DevCon->Draw(vertex_count, 0);
+            d3d11DevCon->DrawIndexed(vertex_count, 0, 0);
 
-            SwapChain->Present(1, 0);
+            d3d11DevCon->OMSetRenderTargets(1, &renderTargetView, depthStencilView);
+
+            d3d11DevCon->IASetInputLayout(vertLayout);
+            vertLayout = input_layout_ptr;
+            d3d11DevCon->IASetVertexBuffers(0, 1, &vertex_buffer_ptr, &vertex_stride, &vertex_offset);
+
+            d3d11DevCon->VSSetShader(VS, NULL, 0);
+            d3d11DevCon->PSSetShader(PS, NULL, 0);
+
+            d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            d3d11DevCon->DrawIndexed(vertex_count, 0, 0);
+
+            SwapChain->Present(0, 0);
 
         }
     }
