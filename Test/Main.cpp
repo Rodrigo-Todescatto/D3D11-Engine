@@ -1,4 +1,3 @@
-#define WIN32_LEAN_AND_MEAN
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "user32")             
@@ -12,7 +11,7 @@
 #include "Variables.h"
 
 bool InitializeDirect3dApp(HINSTANCE hInstance);
-void CleanUp();
+void CreateSphere(int LatLines, int LongLines);
 bool InitScene();
 void UpdateScene();
 void DrawScene();
@@ -53,7 +52,6 @@ int WINAPI WinMain(_In_ HINSTANCE hInstance,
 
     InitializeDirect3dApp(hInstance);
     messageloop();
-    CleanUp();
 
     return 0;
 }
@@ -194,27 +192,132 @@ bool InitializeDirect3dApp(HINSTANCE hInstance)
     return true;
 }
 
-void CleanUp()
+void CreateSphere(int LatLines, int LongLines)
 {
-    SwapChain->Release();
-    d3d11Device->Release();
-    d3d11DevCon->Release();
-    renderTargetView->Release();
-    squareVertBuffer->Release();
-    squareIndexBuffer->Release();
-    VS->Release();
-    PS->Release();
-    VS_Buffer->Release();
-    PS_Buffer->Release();
-    vertLayout->Release();
-    depthStencilView->Release();
-    depthStencilBuffer->Release();
-    cbPerObjectBuffer->Release();
-    WireFrame->Release();
+    NumSphereVertices = ((LatLines - 2) * LongLines) + 2;
+    NumSphereFaces = ((LatLines - 3) * (LongLines) * 2) + (LongLines * 2);
+
+    float sphereYaw = 0.0f;
+    float spherePitch = 0.0f;
+
+    std::vector<Vertex> vertices(NumSphereVertices);
+
+    XMVECTOR currVertPos = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+
+    vertices[0].pos.x = 0.0f;
+    vertices[0].pos.y = 0.0f;
+    vertices[0].pos.z = 1.0f;
+
+    for (DWORD i = 0; i < LatLines - 2; ++i)
+    {
+        spherePitch = (i + 1) * (3.14 / (LatLines - 1));
+        Rotationx = XMMatrixRotationX(spherePitch);
+        for (DWORD j = 0; j < LongLines; ++j)
+        {
+            sphereYaw = j * (6.28 / (LongLines));
+            Rotationy = XMMatrixRotationZ(sphereYaw);
+            currVertPos = XMVector3TransformNormal(XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f), (Rotationx * Rotationy));
+            currVertPos = XMVector3Normalize(currVertPos);
+            vertices[i * LongLines + j + 1].pos.x = XMVectorGetX(currVertPos);
+            vertices[i * LongLines + j + 1].pos.y = XMVectorGetY(currVertPos);
+            vertices[i * LongLines + j + 1].pos.z = XMVectorGetZ(currVertPos);
+        }
+    }
+
+    vertices[NumSphereVertices - 1].pos.x = 0.0f;
+    vertices[NumSphereVertices - 1].pos.y = 0.0f;
+    vertices[NumSphereVertices - 1].pos.z = -1.0f;
+
+
+    D3D11_BUFFER_DESC vertexBufferDesc;
+    ZeroMemory(&vertexBufferDesc, sizeof(vertexBufferDesc));
+
+    vertexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    vertexBufferDesc.ByteWidth = sizeof(Vertex) * NumSphereVertices;
+    vertexBufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    vertexBufferDesc.CPUAccessFlags = 0;
+    vertexBufferDesc.MiscFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA vertexBufferData;
+
+    ZeroMemory(&vertexBufferData, sizeof(vertexBufferData));
+    vertexBufferData.pSysMem = &vertices[0];
+    hr = d3d11Device->CreateBuffer(&vertexBufferDesc, &vertexBufferData, &sphereVertBuffer);
+
+
+    std::vector<DWORD> indices(NumSphereFaces * 3);
+
+    int k = 0;
+    for (DWORD l = 0; l < LongLines - 1; ++l)
+    {
+        indices[k] = 0;
+        indices[k + 1] = l + 1;
+        indices[k + 2] = l + 2;
+        k += 3;
+    }
+
+    indices[k] = 0;
+    indices[k + 1] = LongLines;
+    indices[k + 2] = 1;
+    k += 3;
+
+    for (DWORD i = 0; i < LatLines - 3; ++i)
+    {
+        for (DWORD j = 0; j < LongLines - 1; ++j)
+        {
+            indices[k] = i * LongLines + j + 1;
+            indices[k + 1] = i * LongLines + j + 2;
+            indices[k + 2] = (i + 1) * LongLines + j + 1;
+
+            indices[k + 3] = (i + 1) * LongLines + j + 1;
+            indices[k + 4] = i * LongLines + j + 2;
+            indices[k + 5] = (i + 1) * LongLines + j + 2;
+
+            k += 6;
+        }
+
+        indices[k] = (i * LongLines) + LongLines;
+        indices[k + 1] = (i * LongLines) + 1;
+        indices[k + 2] = ((i + 1) * LongLines) + LongLines;
+
+        indices[k + 3] = ((i + 1) * LongLines) + LongLines;
+        indices[k + 4] = (i * LongLines) + 1;
+        indices[k + 5] = ((i + 1) * LongLines) + 1;
+
+        k += 6;
+    }
+
+    for (DWORD l = 0; l < LongLines - 1; ++l)
+    {
+        indices[k] = NumSphereVertices - 1;
+        indices[k + 1] = (NumSphereVertices - 1) - (l + 1);
+        indices[k + 2] = (NumSphereVertices - 1) - (l + 2);
+        k += 3;
+    }
+
+    indices[k] = NumSphereVertices - 1;
+    indices[k + 1] = (NumSphereVertices - 1) - LongLines;
+    indices[k + 2] = NumSphereVertices - 2;
+
+    D3D11_BUFFER_DESC indexBufferDesc;
+    ZeroMemory(&indexBufferDesc, sizeof(indexBufferDesc));
+
+    indexBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+    indexBufferDesc.ByteWidth = sizeof(DWORD) * NumSphereFaces * 3;
+    indexBufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+    indexBufferDesc.CPUAccessFlags = 0;
+    indexBufferDesc.MiscFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA iinitData;
+
+    iinitData.pSysMem = &indices[0];
+    d3d11Device->CreateBuffer(&indexBufferDesc, &iinitData, &sphereIndexBuffer);
 }
 
 bool InitScene()
 {
+    CreateSphere(10, 10);
+
     hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
         flags, 0, &vs_blob_ptr, &error_blob);
     if (FAILED(hr)) {
@@ -234,6 +337,13 @@ bool InitScene()
         }
         if (ps_blob_ptr) { ps_blob_ptr->Release(); }
     }
+    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYMAP_VS", "vs_5_0",
+        flags, 0, 0, &SKYMAP_VS_Buffer);
+    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYMAP_PS", "ps_5_0",
+        flags, 0, 0, &SKYMAP_PS_Buffer);
+
+    hr = d3d11Device->CreateVertexShader(SKYMAP_VS_Buffer->GetBufferPointer(), SKYMAP_VS_Buffer->GetBufferSize(), NULL, &SKYMAP_VS);
+    hr = d3d11Device->CreatePixelShader(SKYMAP_PS_Buffer->GetBufferPointer(), SKYMAP_PS_Buffer->GetBufferSize(), NULL, &SKYMAP_PS);
 
     hr = d3d11Device->CreateVertexShader(
         vs_blob_ptr->GetBufferPointer(),
@@ -280,7 +390,7 @@ bool InitScene()
 
     hr = d3d11Device->CreateInputLayout(inputElementDesc, numElements, vs_blob_ptr->GetBufferPointer(),
         vs_blob_ptr->GetBufferSize(), &input_layout_ptr);
-    d3d11DevCon->IASetInputLayout(vertLayout);
+    d3d11DevCon->IASetInputLayout(input_layout_ptr);
 
     d3d11DevCon->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -317,16 +427,24 @@ bool InitScene()
     ZeroMemory(&wfdesc, sizeof(D3D11_RASTERIZER_DESC));
     wfdesc.FillMode = D3D11_FILL_WIREFRAME;
     wfdesc.CullMode = D3D11_CULL_NONE;
+    D3D11_RASTERIZER_DESC soliddesc;
+    ZeroMemory(&soliddesc, sizeof(D3D11_RASTERIZER_DESC));
+    soliddesc.FillMode = D3D11_FILL_SOLID;
+    soliddesc.CullMode = D3D11_CULL_NONE;
+    hr = d3d11Device->CreateRasterizerState(&soliddesc, &Solid);
     hr = d3d11Device->CreateRasterizerState(&wfdesc, &WireFrame);
 
-    d3d11DevCon->RSSetState(WireFrame);
+    if(GetKeyState('1') & 0x8000)
+    {
+        d3d11DevCon->RSSetState(WireFrame);
+    }
 
     return true;
 }
 
 void UpdateScene()
 {
-    rot += .0005f;
+    rot += .0007f;
     if (rot > 6.28f)
         rot = 0.0f;
 
@@ -341,7 +459,7 @@ void UpdateScene()
 
 void DrawScene()
 {
-    float background_colour[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+    float background_colour[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 
     d3d11DevCon->ClearRenderTargetView(renderTargetView, background_colour);
 

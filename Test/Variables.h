@@ -10,6 +10,7 @@
 #include <directxmath.h>
 #include <d3dcompiler.h>
 #include <dxgi.h>
+#include <vector>
 
 using namespace DirectX;
 
@@ -17,6 +18,15 @@ ID3DBlob* vs_blob_ptr = NULL;
 ID3DBlob* ps_blob_ptr = NULL;
 ID3DBlob* error_blob = NULL;
 ID3D11InputLayout* input_layout_ptr = NULL;
+
+float rotx = 0;
+float rotz = 0;
+float scaleX = 1.0f;
+float scaleY = 1.0f;
+
+XMMATRIX Rotationx;
+XMMATRIX Rotationy;
+XMMATRIX Rotationz;
 
 struct Vertex    //Overloaded Vertex Structure
 {
@@ -31,14 +41,14 @@ struct Vertex    //Overloaded Vertex Structure
 
 Vertex v[] =
 {
-    Vertex(-1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(-1.0f, +1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(+1.0f, +1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(+1.0f, -1.0f, -1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(-1.0f, -1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(-1.0f, +1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(+1.0f, +1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-    Vertex(+1.0f, -1.0f, +1.0f, 1.0f, 0.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, +1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, +1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, -1.0f, -1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, -1.0f, +1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(-1.0f, +1.0f, +1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, +1.0f, +1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
+    Vertex(+1.0f, -1.0f, +1.0f, 1.0f, 1.0f, 0.0f, 1.0f),
 };
 
 DWORD indices[] = {
@@ -132,3 +142,22 @@ D3D11_INPUT_ELEMENT_DESC inputElementDesc[] = {
 UINT numElements = ARRAYSIZE(inputElementDesc);
 
 ID3D11RasterizerState* WireFrame;
+ID3D11RasterizerState* Solid;
+
+ID3D11Buffer* sphereIndexBuffer;
+ID3D11Buffer* sphereVertBuffer;
+
+ID3D11VertexShader* SKYMAP_VS;
+ID3D11PixelShader* SKYMAP_PS;
+ID3D10Blob* SKYMAP_VS_Buffer;
+ID3D10Blob* SKYMAP_PS_Buffer;
+
+ID3D11ShaderResourceView* smrv;
+
+ID3D11DepthStencilState* DSLessEqual;
+ID3D11RasterizerState* RSCullNone;
+
+int NumSphereVertices;
+int NumSphereFaces;
+
+XMMATRIX sphereWorld;
