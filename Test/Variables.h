@@ -147,12 +147,12 @@ ID3D11RasterizerState* Solid;
 ID3D11Buffer* sphereIndexBuffer;
 ID3D11Buffer* sphereVertBuffer;
 
-ID3D11VertexShader* SKYMAP_VS;
-ID3D11PixelShader* SKYMAP_PS;
-ID3D10Blob* SKYMAP_VS_Buffer;
-ID3D10Blob* SKYMAP_PS_Buffer;
+ID3D11VertexShader* SKYBOX_VS = NULL;
+ID3D11PixelShader* SKYBOX_PS = NULL;
+ID3DBlob* SKYBOX_VS_Buffer;
+ID3DBlob* SKYBOX_PS_Buffer;
 
-ID3D11ShaderResourceView* smrv;
+ID3D11ShaderResourceView* smrv = nullptr;
 
 ID3D11DepthStencilState* DSLessEqual;
 ID3D11RasterizerState* RSCullNone;
@@ -161,3 +161,5 @@ int NumSphereVertices;
 int NumSphereFaces;
 
 XMMATRIX sphereWorld;
+
+size_t maxsize = 0Ui64;

@@ -9,6 +9,9 @@
 #include <d3dcompiler.h>
 #include <dxgi.h>
 #include "Variables.h"
+#include <DDSTextureLoader.h>
+
+using namespace DirectX;
 
 bool InitializeDirect3dApp(HINSTANCE hInstance);
 void CreateSphere(int LatLines, int LongLines);
@@ -320,30 +323,23 @@ bool InitScene()
 
     hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "vs_main", "vs_5_0",
         flags, 0, &vs_blob_ptr, &error_blob);
-    if (FAILED(hr)) {
-        if (error_blob) {
-            OutputDebugStringA((char*)error_blob->GetBufferPointer());
-            error_blob->Release();
-        }
-        if (vs_blob_ptr) { vs_blob_ptr->Release(); }
-    }
 
     hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "ps_main", "ps_5_0",
         flags, 0, &ps_blob_ptr, &error_blob);
-    if (FAILED(hr)) {
-        if (error_blob) {
-            OutputDebugStringA((char*)error_blob->GetBufferPointer());
-            error_blob->Release();
-        }
-        if (ps_blob_ptr) { ps_blob_ptr->Release(); }
-    }
-    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYMAP_VS", "vs_5_0",
-        flags, 0, 0, &SKYMAP_VS_Buffer);
-    hr = D3DCompileFromFile(L"VertexShader.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYMAP_PS", "ps_5_0",
-        flags, 0, 0, &SKYMAP_PS_Buffer);
 
-    hr = d3d11Device->CreateVertexShader(SKYMAP_VS_Buffer->GetBufferPointer(), SKYMAP_VS_Buffer->GetBufferSize(), NULL, &SKYMAP_VS);
-    hr = d3d11Device->CreatePixelShader(SKYMAP_PS_Buffer->GetBufferPointer(), SKYMAP_PS_Buffer->GetBufferSize(), NULL, &SKYMAP_PS);
+    hr = D3DCompileFromFile(L"Skybox.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYBOX_VS", "vs_5_0",
+        flags, 0, &SKYBOX_VS_Buffer, &error_blob);
+    if (FAILED(hr)) {
+        MessageBox(NULL, L"Failed to create skybox!", TEXT("Error"), MB_OK);
+        return false;
+    }
+
+    hr = D3DCompileFromFile(L"Skybox.hlsl", nullptr, D3D_COMPILE_STANDARD_FILE_INCLUDE, "SKYBOX_PS", "ps_5_0",
+        flags, 0, &SKYBOX_PS_Buffer, &error_blob);
+    if (FAILED(hr)) {
+        MessageBox(NULL, L"Failed to create skybox!", TEXT("Error"), MB_OK);
+        return false;
+    }
 
     hr = d3d11Device->CreateVertexShader(
         vs_blob_ptr->GetBufferPointer(),
@@ -356,6 +352,9 @@ bool InitScene()
         ps_blob_ptr->GetBufferSize(),
         NULL,
         &PS);
+
+    hr = d3d11Device->CreateVertexShader(SKYBOX_VS_Buffer->GetBufferPointer(), SKYBOX_VS_Buffer->GetBufferSize(), NULL, &SKYBOX_VS);
+    hr = d3d11Device->CreatePixelShader(SKYBOX_PS_Buffer->GetBufferPointer(), SKYBOX_PS_Buffer->GetBufferSize(), NULL, &SKYBOX_PS);
 
     d3d11DevCon->VSSetShader(VS, NULL, 0);
     d3d11DevCon->PSSetShader(PS, NULL, 0);
@@ -423,6 +422,27 @@ bool InitScene()
     camView = XMMatrixLookAtLH(camPosition, camTarget, camUp);
     camProjection = XMMatrixPerspectiveFovLH(0.4f * 3.14f, (float)Width / Height, 1.0f, 1000.0f);
 
+    D3D11_RESOURCE_MISC_FLAG loadSMInfo = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+    ID3D11Texture2D* SMTexture = nullptr;
+    hr = DirectX::CreateDDSTextureFromFile(d3d11Device, L"skymap.dds", (ID3D11Resource**)&SMTexture, &smrv);
+    if (FAILED(hr)) {
+        MessageBox(NULL, L"Failed to load skybox!", TEXT("Error"), MB_OK);
+        return false;
+    }
+
+    D3D11_TEXTURE2D_DESC SMTextureDesc;
+    SMTexture->GetDesc(&SMTextureDesc);
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC SMViewDesc;
+    ZeroMemory(&SMViewDesc, sizeof(SMViewDesc));
+    SMViewDesc.Format = SMTextureDesc.Format;
+    SMViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+    SMViewDesc.TextureCube.MipLevels = SMTextureDesc.MipLevels;
+    SMViewDesc.TextureCube.MostDetailedMip = 0;
+
+    hr = d3d11Device->CreateShaderResourceView(SMTexture, &SMViewDesc, &smrv);
+
     D3D11_RASTERIZER_DESC wfdesc;
     ZeroMemory(&wfdesc, sizeof(D3D11_RASTERIZER_DESC));
     wfdesc.FillMode = D3D11_FILL_WIREFRAME;
@@ -433,6 +453,19 @@ bool InitScene()
     soliddesc.CullMode = D3D11_CULL_NONE;
     hr = d3d11Device->CreateRasterizerState(&soliddesc, &Solid);
     hr = d3d11Device->CreateRasterizerState(&wfdesc, &WireFrame);
+
+    D3D11_RASTERIZER_DESC cmdesc;
+
+    cmdesc.CullMode = D3D11_CULL_NONE;
+    hr = d3d11Device->CreateRasterizerState(&cmdesc, &RSCullNone);
+
+    D3D11_DEPTH_STENCIL_DESC dssDesc;
+    ZeroMemory(&dssDesc, sizeof(D3D11_DEPTH_STENCIL_DESC));
+    dssDesc.DepthEnable = true;
+    dssDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+    dssDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+
+    d3d11Device->CreateDepthStencilState(&dssDesc, &DSLessEqual);
 
     if(GetKeyState('1') & 0x8000)
     {
@@ -455,6 +488,12 @@ void UpdateScene()
     Translation = XMMatrixTranslation(0.0f, 0.0f, 4.0f);
 
     cube = Translation * Rotation;
+
+    sphereWorld = XMMatrixIdentity();
+
+    Scale = XMMatrixScaling(5.0f, 5.0f, 5.0f);
+    Translation = XMMatrixTranslation(XMVectorGetX(camPosition), XMVectorGetY(camPosition), XMVectorGetZ(camPosition));
+    sphereWorld = Scale * Translation;
 }
 
 void DrawScene()
@@ -471,6 +510,26 @@ void DrawScene()
     d3d11DevCon->VSSetConstantBuffers(0, 1, &cbPerObjectBuffer);
 
     d3d11DevCon->DrawIndexed(index_count, 0, 0);
+
+    d3d11DevCon->IASetIndexBuffer(sphereIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+    d3d11DevCon->IASetVertexBuffers(0, 1, &sphereVertBuffer, &vertex_stride, &vertex_offset);
+
+    WVP = sphereWorld * camView * camProjection;
+    cbPerObj.WVP = XMMatrixTranspose(WVP);
+    //cbPerObj.World = XMMatrixTranspose(sphereWorld);
+    d3d11DevCon->UpdateSubresource(cbPerObjectBuffer, 0, NULL, &cbPerObj, 0, 0);
+    d3d11DevCon->VSSetConstantBuffers(0, 1, &cbPerObjectBuffer);
+    d3d11DevCon->PSSetShaderResources(0, 1, &smrv);
+    //d3d11DevCon->PSSetSamplers(0, 1, &CubesTexSamplerState);
+
+    d3d11DevCon->VSSetShader(SKYBOX_VS, 0, 0);
+    d3d11DevCon->PSSetShader(SKYBOX_PS, 0, 0);
+    d3d11DevCon->OMSetDepthStencilState(DSLessEqual, 0);
+    d3d11DevCon->RSSetState(RSCullNone);
+    d3d11DevCon->DrawIndexed(NumSphereFaces * 3, 0, 0);
+
+    d3d11DevCon->VSSetShader(VS, 0, 0);
+    d3d11DevCon->OMSetDepthStencilState(NULL, 0);
 
     SwapChain->Present(0, 0);
 }
